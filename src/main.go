@@ -45,11 +45,11 @@ func listAccessKeys(ctx context.Context, cfg *aws.Config, awsProfile, awsUser st
 		keyElement[i].accesskey = *key.AccessKeyId
 		keyElement[i].username = *key.UserName
 		keyElement[i].creationtime = *key.CreateDate
-		keyElement[i].status = "unknown"
-		fmt.Printf("%s : Current AccessKeyId: %s\n", awsProfile, keyElement[i].accesskey)
-		fmt.Printf("%s : IAM user of AccessKey: %s\n", awsProfile, keyElement[i].username)
-		fmt.Printf("%s : Creation time of AccessKey: %s\n", awsProfile, keyElement[i].creationtime)
-		//fmt.Printf("%s : Status of AccessKey: %s\n\n", awsProfile, keyElement[i].status)
+		keyElement[i].status = string(key.Status)
+		ageOfKey := time.Since(keyElement[i].creationtime)
+
+		fmt.Printf("%s : IAM user: %s / Current AccessKeyId: %s / Status: %s\n", awsProfile, keyElement[i].username, keyElement[i].accesskey, keyElement[i].status)
+		fmt.Printf("%s : Creation time of AccessKey: %s / Age: %s\n", awsProfile, keyElement[i].creationtime, ageOfKey.Truncate(time.Second).String())
 
 		profiles[awsProfile]["userName"] = *key.UserName
 		profiles[awsProfile]["oldAccessKeyId"] = *key.AccessKeyId
@@ -74,8 +74,12 @@ func saveNewAccessKey(awsProfile, newAccessKeyId, newSecretAccessKey, awsCmd str
 	if len(awsProfile) == 0 {
 		awsProfile = "default"
 	}
-	fmt.Printf("%s : New AccessKeyId: %s\n", awsProfile, newAccessKeyId)
-	fmt.Printf("%s : New SecretAccessKey: ************\n", awsProfile)
+
+	if newAccessKeyId == "" {
+		return false
+	}
+
+	fmt.Printf("%s : New AccessKeyId: %s / New SecretAccessKey: ************\n", awsProfile, newAccessKeyId)
 
 	cmd01 := exec.Command(awsCmd, "--profile", awsProfile, "--output", "json", "configure", "set", "aws_secret_access_key", newSecretAccessKey)
 	cmd02 := exec.Command(awsCmd, "--profile", awsProfile, "--output", "json", "configure", "set", "aws_access_key_id", newAccessKeyId)
@@ -195,7 +199,6 @@ func main() {
 	for _, awsProfile := range awsProfiles {
 		awsProfile = strings.TrimSpace(awsProfile)
 		profiles[awsProfile] = map[string]string{} // Create map per profile
-		profiles[awsProfile]["val"] = "x"
 		profileExists := listAwsProfiles(awsProfile, awsCmd)
 		if !profileExists {
 			someProfilesNotFound = true
@@ -234,18 +237,22 @@ func main() {
 	}
 	timeForRotation := time.Since(startTime)
 
-	if *goroutine { // Save new key in local configuration, if not done yert because of goroutine
+	if *goroutine { // Save new key in local configuration, if not done yet because of goroutine
 		fmt.Println("\nUpdating local configuration in non-parallel-mode to prevent simultaneous access to same configuration file.")
 		for _, awsProfile := range awsProfiles {
-			saved := saveNewAccessKey(awsProfile, profiles[awsProfile]["newAccessKeyId"], profiles[awsProfile]["newSecretAccessKey"], awsCmd)
-			if saved {
-				fmt.Printf("%s : Local AWS CLI configuration updated with new AccessKeyId and SecretAccessKey\n", awsProfile)
+			if profiles[awsProfile]["newAccessKeyCreated"] == "YES" {
+				saved := saveNewAccessKey(awsProfile, profiles[awsProfile]["newAccessKeyId"], profiles[awsProfile]["newSecretAccessKey"], awsCmd)
+				if saved {
+					fmt.Printf("%s : Local AWS CLI configuration updated with new AccessKeyId and SecretAccessKey\n", awsProfile)
+				} else {
+					fmt.Printf("\nWARNING ! \nCould not save the new AccessKeyId and SecretAccessKey for the following User:\n")
+					fmt.Println(awsProfile, "Username", profiles[awsProfile]["userName"])
+					fmt.Println(awsProfile, "Old Key", profiles[awsProfile]["oldAccessKeyId"])
+					fmt.Println(awsProfile, "New Key", profiles[awsProfile]["newAccessKeyId"])
+					fmt.Println(awsProfile, "New Secret", profiles[awsProfile]["newSecretAccessKey"])
+				}
 			} else {
-				fmt.Printf("\nWARNING ! \nCould not save the new AccessKeyId and SecretAccessKey for the following User:\n")
-				fmt.Println(awsProfile, "Username", profiles[awsProfile]["userName"])
-				fmt.Println(awsProfile, "Old Key", profiles[awsProfile]["oldAccessKeyId"])
-				fmt.Println(awsProfile, "New Key", profiles[awsProfile]["newAccessKeyId"])
-				fmt.Println(awsProfile, "New Secret", profiles[awsProfile]["newSecretAccessKey"])
+				fmt.Printf("\nNo new AccessKey stored for %s\n", profiles[awsProfile]["userName"])
 			}
 		}
 		fmt.Println("")
@@ -259,7 +266,7 @@ func start(awsProfile, awsRegion string, goroutine bool, rc chan int) int {
 	if goroutine {
 		defer wg.Done() // Delete one instance from the goroutine waitgroup
 	}
-	fmt.Printf("%s : AWS region: %s (global service)\n", awsProfile, awsRegion)
+	//fmt.Printf("%s : AWS region: %s (global service)\n", awsProfile, awsRegion)
 
 	// Create new session
 	ctx := context.TODO()
@@ -280,9 +287,9 @@ func start(awsProfile, awsRegion string, goroutine bool, rc chan int) int {
 	}
 
 	// Create new AccessKey
+	profiles[awsProfile]["newAccessKeyCreated"] = "NO"
 	if numberOfAccessKeys > 1 {
 		fmt.Printf("%s : Can not add any keys. There are %d keys present. 2 is the maximum allowed by AWS!\n", awsProfile, numberOfAccessKeys)
-		//fmt.Println("Too many AccessKeys already existing!")
 		rc <- 3
 		return 3
 	} else {
@@ -295,37 +302,44 @@ func start(awsProfile, awsRegion string, goroutine bool, rc chan int) int {
 		}
 		profiles[awsProfile]["newAccessKeyId"] = *result.AccessKey.AccessKeyId
 		profiles[awsProfile]["newSecretAccessKey"] = *result.AccessKey.SecretAccessKey
+		profiles[awsProfile]["newAccessKeyCreated"] = "YES"
 	}
 
 	// Save new AccessKey in configuration
-	var saved bool = false
-	if goroutine { // if in goroutine, just confirm the configuration save and save later outside of the goroutine
-		saved = true
-	} else {
-		saved = saveNewAccessKey(awsProfile, profiles[awsProfile]["newAccessKeyId"], profiles[awsProfile]["newSecretAccessKey"], awsCmd)
-	}
-	// Delete old AccessKey
-	var keyToDelete string = profiles[awsProfile]["newAccessKeyId"]
-	var returnCode int = 8 // Key rotation was successful. But not clear if new key was stored successful. Maybe new key will be deleted from AWS
+	var returnCode int = 999 // Unknown result
+	if profiles[awsProfile]["newAccessKeyCreated"] == "YES" {
+		var saved bool = false
+		if goroutine { // if in goroutine, just confirm the configuration save and save later outside of the goroutine
+			saved = true
+		} else {
+			saved = saveNewAccessKey(awsProfile, profiles[awsProfile]["newAccessKeyId"], profiles[awsProfile]["newSecretAccessKey"], awsCmd)
+		}
+		// Delete old AccessKey
+		var keyToDelete string = profiles[awsProfile]["newAccessKeyId"]
+		returnCode = 8 // Key rotation was successful. But not clear if new key was stored successful. Maybe new key will be deleted from AWS
 
-	if saved {
-		keyToDelete = profiles[awsProfile]["oldAccessKeyId"]
-		returnCode = 0 // Key rotation (incl. storing of new key) was successful. Old key will be deleted from AWS.
-		if !goroutine {
-			fmt.Printf("%s : Local AWS CLI configuration updated with new AccessKeyId and SecretAccessKey\n", awsProfile)
+		if saved {
+			keyToDelete = profiles[awsProfile]["oldAccessKeyId"]
+			returnCode = 0 // Key rotation (incl. storing of new key) was successful. Old key will be deleted from AWS.
+			if !goroutine {
+				fmt.Printf("%s : Local AWS CLI configuration updated with new AccessKeyId and SecretAccessKey\n", awsProfile)
+			}
+		} else {
+			fmt.Printf("%s : Deleting NEW AccessKey from AWS, because the new one was not saved successfully.\n", awsProfile)
+		}
+		errdeleteAccessKey := deleteAccessKey(ctx, &cfg, profiles[awsProfile]["userName"], keyToDelete)
+		if errdeleteAccessKey == nil {
+			fmt.Printf("%s : AccessKey %s successfully deleted\n", awsProfile, keyToDelete)
+		} else {
+			fmt.Printf("%s : AccessKey deletion failed for key: %s\n", awsProfile, keyToDelete)
+			fmt.Printf("%s : AccessKey deletion failed! %s\n", awsProfile, errdeleteAccessKey.Error())
+			rc <- 5
+			return 5
 		}
 	} else {
-		fmt.Printf("%s : Deleting NEW AccessKey from AWS, because the new one was not saved successfully.\n", awsProfile)
+		returnCode = 9 // Key rotation was NOT successful. New key NOT created!
 	}
-	errdeleteAccessKey := deleteAccessKey(ctx, &cfg, profiles[awsProfile]["userName"], keyToDelete)
-	if errdeleteAccessKey == nil {
-		fmt.Printf("%s : AccessKey %s successfully deleted\n", awsProfile, keyToDelete)
-	} else {
-		fmt.Printf("%s : AccessKey deletion failed for key: %s\n", awsProfile, keyToDelete)
-		fmt.Printf("%s : AccessKey deletion failed! %s\n", awsProfile, errdeleteAccessKey.Error())
-		rc <- 5
-		return 5
-	}
+
 	if goroutine {
 		rc <- returnCode // Add returnCode to channel rc
 	}
