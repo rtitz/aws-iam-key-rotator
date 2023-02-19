@@ -40,7 +40,7 @@ aws-iam-key-rotator -help
 ```
  * Standard without parallel mode for the 'default' AWS CLI profile
 ```
-aws-iam-key-rotator -profile default:
+aws-iam-key-rotator -profile default
 ```
  * Multiple AWS CLI profiles without parallel mode:
 ```
