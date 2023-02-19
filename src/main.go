@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/rtitz/aws-iam-key-rotator/awsUtils"
+	"github.com/rtitz/aws-iam-key-rotator/variables"
 )
 
 func listAccessKeys(ctx context.Context, cfg *aws.Config, awsProfile, awsUser string) (int, error) {
@@ -152,7 +152,6 @@ type iamKeysStruct struct {
 }
 
 var keyElement [2]iamKeysStruct
-var awsCmd string
 
 var profiles = map[string]map[string]string{}
 
@@ -160,11 +159,6 @@ var wg sync.WaitGroup
 
 func main() {
 	startTime := time.Now()
-	if runtime.GOOS == "windows" {
-		awsCmd = "aws.exe"
-	} else {
-		awsCmd = "aws"
-	}
 
 	// Define and check parameters
 	awsProfileArg := flag.String("profile", "", "Specify the AWS CLI profile, for example: 'default' or a comma-separated list like 'default,test'")
@@ -179,12 +173,7 @@ func main() {
 	}
 	// End of: Define and check parameters
 
-	var appName string = "AWS IAM access key rotator"
-	var appVersion string = "1.0.1"
-
-	var awsRegion string = "us-east-1" // IAM is a global service with its endpoint being located in us-east-1
-
-	fmt.Printf("%s %s\n\n", appName, appVersion)
+	fmt.Printf("%s %s\n\n", variables.AppName, variables.AppVersion)
 	//fmt.Printf("Runtime: %s (%s)\n", runtime.GOOS, runtime.GOARCH)
 	if *goroutine {
 		fmt.Printf("Parallel mode: Enabled\n\n")
@@ -199,14 +188,14 @@ func main() {
 	for _, awsProfile := range awsProfiles {
 		awsProfile = strings.TrimSpace(awsProfile)
 		profiles[awsProfile] = map[string]string{} // Create map per profile
-		profileExists := listAwsProfiles(awsProfile, awsCmd)
+		profileExists := listAwsProfiles(awsProfile, variables.AwsCmd)
 		if !profileExists {
 			someProfilesNotFound = true
 			fmt.Printf("Profile '%s' does not exist!\n", awsProfile)
 		}
 		if someProfilesNotFound {
 			fmt.Printf("List existing profiles with the following command:\n")
-			fmt.Printf("%s configure list-profiles\n", awsCmd)
+			fmt.Printf("%s configure list-profiles\n", variables.AwsCmd)
 			os.Exit(900)
 		}
 	}
@@ -219,10 +208,10 @@ func main() {
 		awsProfile = strings.TrimSpace(awsProfile)
 		if *goroutine {
 			wg.Add(1) // Add one instance to the goroutine waitgroup
-			go start(awsProfile, awsRegion, *goroutine, rc)
+			go start(awsProfile, variables.AwsRegion, *goroutine, rc)
 			//rcInt += <-rc  // Receiving the channel here will make the goroutine to run in a sequence instead of a parallel
 		} else {
-			returnCode += start(awsProfile, awsRegion, *goroutine, rc)
+			returnCode += start(awsProfile, variables.AwsRegion, *goroutine, rc)
 			fmt.Println("") // Empty line as sepatater for nicer output
 		}
 	}
@@ -241,7 +230,7 @@ func main() {
 		fmt.Println("\nUpdating local configuration in non-parallel-mode to prevent simultaneous access to same configuration file.")
 		for _, awsProfile := range awsProfiles {
 			if profiles[awsProfile]["newAccessKeyCreated"] == "YES" {
-				saved := saveNewAccessKey(awsProfile, profiles[awsProfile]["newAccessKeyId"], profiles[awsProfile]["newSecretAccessKey"], awsCmd)
+				saved := saveNewAccessKey(awsProfile, profiles[awsProfile]["newAccessKeyId"], profiles[awsProfile]["newSecretAccessKey"], variables.AwsCmd)
 				if saved {
 					fmt.Printf("%s : Local AWS CLI configuration updated with new AccessKeyId and SecretAccessKey\n", awsProfile)
 				} else {
@@ -312,7 +301,7 @@ func start(awsProfile, awsRegion string, goroutine bool, rc chan int) int {
 		if goroutine { // if in goroutine, just confirm the configuration save and save later outside of the goroutine
 			saved = true
 		} else {
-			saved = saveNewAccessKey(awsProfile, profiles[awsProfile]["newAccessKeyId"], profiles[awsProfile]["newSecretAccessKey"], awsCmd)
+			saved = saveNewAccessKey(awsProfile, profiles[awsProfile]["newAccessKeyId"], profiles[awsProfile]["newSecretAccessKey"], variables.AwsCmd)
 		}
 		// Delete old AccessKey
 		var keyToDelete string = profiles[awsProfile]["newAccessKeyId"]
