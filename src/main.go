@@ -252,7 +252,7 @@ func main() {
 					fmt.Println(awsProfile, "New Secret", profiles[awsProfile]["newSecretAccessKey"])
 				}
 			} else {
-				fmt.Printf("\nNo new AccessKey stored for %s\n", profiles[awsProfile]["userName"])
+				fmt.Printf("\nNo new AccessKey stored for %s\n", awsProfile)
 			}
 		}
 		fmt.Println("")
