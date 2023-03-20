@@ -15,7 +15,7 @@ var AwsCmd string
 func init() {
 	// App name and version
 	AppName = "AWS IAM access key rotator"
-	AppVersion = "1.0.2"
+	AppVersion = "1.0.3"
 
 	// AWS Variables
 	AwsRegion = "us-east-1" // IAM is a global service with its endpoint being located in us-east-1

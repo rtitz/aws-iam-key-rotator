@@ -127,10 +127,19 @@ func listAwsProfiles(awsProfile, awsCmd string) bool {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	if err != nil {
-		fmt.Printf("\nPlease verify that the AWS CLI is installed configured! (AWS CLI version 1 is not supported!)\nhttps://docs.aws.amazon.com/cli/\n")
-		fmt.Println(fmt.Sprint(err) + ": " + stderr.String())
-		return false
+	if err != nil { // Failed to verify AWS profile with CLI version 2 method, trying again with legacy way
+		cmd := exec.Command(awsCmd, "configure", "list", "--profile", awsProfile)
+		var out bytes.Buffer
+		var stderr bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &stderr
+		errLegacy := cmd.Run()
+		if errLegacy != nil { // Legacy check also failed / profile not found
+			fmt.Printf("\nPLEASE VERIFY THAT THE AWS CLI IS INSTALLED AND CONFIGURED! (SEE: https://docs.aws.amazon.com/cli/)\n\n")
+			fmt.Println(fmt.Sprint(err) + ": " + stderr.String())
+			return false
+		}
+		return true
 	}
 
 	var profileFound bool = false
@@ -246,7 +255,7 @@ func main() {
 		}
 		fmt.Println("")
 	}
-	fmt.Printf("Keyrotation for %d AWS profiles done! - Exection time %s seconds\n", len(awsProfiles), timeForRotation)
+	fmt.Printf("Key rotation for %d AWS profiles done! - Exection time %s seconds\n", len(awsProfiles), timeForRotation)
 	fmt.Printf("DONE! - Entire exection time %s seconds\n", time.Since(startTime))
 	os.Exit(returnCode)
 }
