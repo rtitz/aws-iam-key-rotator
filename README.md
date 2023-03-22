@@ -7,33 +7,9 @@ Key rotation can be done in sequence or in a parallel mode, which is much faster
 Regular key rotation is a best practice for security reasons.
 
 
-## How to build the executable binary
-
- * [Install Go](https://go.dev/doc/install)
- * Build the binary for your current platform:
-```
-cd src/
-go build -ldflags "-s -w" .
-```
- * Build the binary for many platforms:
-```
-cd src/
-go get -u && go mod tidy
-bash build.sh  # Not running on Windows
-```
-
-
-## How to execute it directly (without building the binary in advance)
- * [Install Go](https://go.dev/doc/install)
-  * Execute:
-```
-cd src/
-go run .
-```
-
-
-## How to use
- * Ensure that the AWS CLI is installed configured! (AWS CLI version 1 is not supported!) (https://docs.aws.amazon.com/cli/)
+## How to use (pre-compiled binary)
+ * In the directory 'bin/' you will find pre-compiled binaries to use. (No need to build it on your own.)
+ * Ensure that the AWS CLI is installed and configured! (https://docs.aws.amazon.com/cli/)
  * Help for the parameters:
 ```
 aws-iam-key-rotator -help
@@ -49,4 +25,28 @@ aws-iam-key-rotator -profile default,dev,prod
  * Multiple AWS CLI profiles with parallel mode:
 ```
 aws-iam-key-rotator -profile default,dev,prod -parallel
+```
+
+
+## How to build the executable binary (if you don't like the pre-compiled in the 'bin' directory)
+ * [Install Go](https://go.dev/doc/install)
+ * Build the binary for your current platform:
+```
+cd src/
+go build -ldflags "-s -w" .
+```
+ * Build the binary for many platforms:
+```
+cd src/
+go get -u && go mod tidy
+bash build.sh  # Not running on Windows
+```
+
+
+## How to execute it directly (without building the binary in advance or using the pre-compiled)
+ * [Install Go](https://go.dev/doc/install)
+  * Execute:
+```
+cd src/
+go run .
 ```
