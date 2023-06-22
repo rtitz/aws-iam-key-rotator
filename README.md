@@ -1,10 +1,34 @@
 # AWS IAM Key Rotator
 
-This is an AWS IAM Key Rotator created in Go.
+This is an AWS IAM Key Rotator created in Go. (You do not need to use the Go language, pre-compiled binaries available here.)
 It can rotate AWS IAM Keys of one or multiple AWS CLI profiles.
 Key rotation can be done in sequence or in a parallel mode, which is much faster if you have many AWS CLI profiles.
 
 Regular key rotation is a best practice for security reasons.
+
+
+## Requirements for the AWS IAM Key Rotator
+ * Ensure that the AWS CLI is installed and configured! (https://docs.aws.amazon.com/cli/)
+ * AWS CLI configuration (https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)
+ * An IAM user with access key (and secret access key)
+ * Your IAM user should have the following permissions (can be a separate attached IAM policy):
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "iam:CreateAccessKey",
+                "iam:UpdateAccessKey",
+                "iam:DeleteAccessKey",
+                "iam:ListAccessKeys"
+            ],
+            "Resource": "arn:aws:iam::*:user/${aws:username}",
+            "Effect": "Allow"
+        }
+    ]
+}
+```
 
 
 ## How to use (pre-compiled binary)
@@ -28,25 +52,5 @@ aws-iam-key-rotator -profile default,dev,prod -parallel
 ```
 
 
-## How to build the executable binary (if you don't like the pre-compiled in the 'bin' directory)
- * [Install Go](https://go.dev/doc/install)
- * Build the binary for your current platform:
-```
-cd src/
-go build -ldflags "-s -w" .
-```
- * Build the binary for many platforms:
-```
-cd src/
-go get -u && go mod tidy
-bash build.sh  # Not running on Windows
-```
-
-
-## How to execute it directly (without building the binary in advance or using the pre-compiled)
- * [Install Go](https://go.dev/doc/install)
-  * Execute:
-```
-cd src/
-go run .
-```
+---
+## [Build it on your own from source](doc/build.md)
